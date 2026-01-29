@@ -136,6 +136,9 @@ async function startCapture(sourceId = null) {
         sources.forEach((source) => {
             const option = document.createElement('option');
             option.value = source.id;
+            if (source.display_id) {
+                option.dataset.displayId = source.display_id;
+            }
             option.text = source.name || `Source ${source.id}`;
             screenSelector.appendChild(option);
         });
@@ -289,7 +292,8 @@ clearShapesBtn.addEventListener('click', () => {
 });
 
 window.addEventListener('keydown', async (e) => {
-    if (document.activeElement.tagName === 'INPUT') return;
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+    
     if (e.key === 'Delete' || e.key === 'Backspace') {
         const el = document.querySelector(`[data-id="${activeObjectId}"]`);
         if (el) {
@@ -297,8 +301,12 @@ window.addEventListener('keydown', async (e) => {
             else if (el.classList.contains('preview-fixed-comment')) { if (socket) socket.emit('delete_fixed_comment', activeObjectId); }
             el.remove(); activeObjectId = null;
         }
-    } else if (e.key === 'ArrowLeft') { await ipcRenderer.invoke('ppt-prev-slide'); }
-    else if (e.key === 'ArrowRight') { await ipcRenderer.invoke('ppt-next-slide'); }
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { 
+        await ipcRenderer.invoke('ppt-prev-slide'); 
+    } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { 
+        if (e.key === ' ' && document.activeElement.tagName === 'BUTTON') return; // ボタン押下時はデフォルト動作優先
+        await ipcRenderer.invoke('ppt-next-slide'); 
+    }
 });
 
 function createShape(type) {

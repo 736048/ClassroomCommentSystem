@@ -114,6 +114,54 @@
         }
         #qr-close-btn { margin-top: 20px; font-size: 2rem; padding: 10px 50px; background: #fff; color: #000; border: 5px solid #000; font-weight: bold; cursor: pointer; }
 
+        /* Styled Toggle Switch */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #fff;
+            border: 2px solid #000;
+            transition: .2s;
+            border-radius: 22px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 2px;
+            bottom: 2px;
+            background-color: #000;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #000;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(18px);
+            background-color: #fff;
+        }
+
     </style>
 </head>
 <body>
@@ -132,13 +180,13 @@
         <div class="main-content">
             <div class="column-left">
                 <div class="section" style="flex-grow: 0;">
-                    <div class="flex-row" style="justify-content: space-between;">
+                    <div class="flex-row" style="justify-content: space-between; flex-wrap: nowrap;">
                         <h2>図形・固定管理</h2>
-                        <div style="display: flex; gap: 5px;">
-                            <select id="screen-selector" style="font-size: 0.8rem; padding: 2px;">
+                        <div style="display: flex; gap: 5px; align-items: center;">
+                            <select id="screen-selector" style="font-size: 0.8rem; padding: 2px; max-width: 150px;">
                                 <option value="">画面読込中...</option>
                             </select>
-                            <button id="refresh-screens-btn" class="secondary" style="padding: 2px 10px; font-size: 0.7rem;">更新</button>
+                            <button id="refresh-screens-btn" class="secondary" style="padding: 2px 10px; font-size: 0.7rem; flex-shrink: 0;">更新</button>
                         </div>
                     </div>
                     <div id="screen-preview-container">
@@ -237,7 +285,13 @@
                     
                     <div class="flex-row" style="justify-content: space-between;">
                         <h2>ノート</h2>
-                        <label><input type="checkbox" id="ppt-sync-toggle"> 同期ON</label>
+                        <label class="toggle-container">
+                            同期ON
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="ppt-sync-toggle">
+                                <span class="toggle-slider"></span>
+                            </div>
+                        </label>
                     </div>
                     <div id="ppt-status" style="font-size: 0.8rem; color: #666;">待機中...</div>
                     <div id="ppt-notes-display">PowerPointのノートがここに表示されます。</div>

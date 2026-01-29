@@ -113,14 +113,30 @@ ipcMain.handle('get-ppt-data', async () => {
 // PPT Navigation
 ipcMain.handle('ppt-prev-slide', async () => {
     return new Promise((resolve) => {
-        const script = `tell application \"Microsoft PowerPoint\" to try to go to previous slide slide show view of slide show window 1`;
+        const script = `
+            tell application "Microsoft PowerPoint"
+                try
+                    if (count of slide show windows) > 0 then
+                        go to previous slide slide show view of slide show window 1
+                    end if
+                end try
+            end tell
+        `;
         exec(`osascript -e '${script}'`, (error, stdout) => resolve(stdout.trim()));
     });
 });
 
 ipcMain.handle('ppt-next-slide', async () => {
     return new Promise((resolve) => {
-        const script = `tell application \"Microsoft PowerPoint\" to try to go to next slide slide show view of slide show window 1`;
+        const script = `
+            tell application "Microsoft PowerPoint"
+                try
+                    if (count of slide show windows) > 0 then
+                        go to next slide slide show view of slide show window 1
+                    end if
+                end try
+            end tell
+        `;
         exec(`osascript -e '${script}'`, (error, stdout) => resolve(stdout.trim()));
     });
 });
