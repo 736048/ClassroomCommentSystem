@@ -1,25 +1,28 @@
 const { networkInterfaces } = require('os');
 const QRCode = require('qrcode');
-const { ipcRenderer, desktopCapturer } = require('electron');
+const { ipcRenderer } = require('electron');
 const io = require('socket.io-client');
 
 let socket;
 let currentUrl = '';
+let currentQrDataUrl = '';
 
-// DOM Elements
+// --- DOM Elements ---
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
 const serverUrlHeader = document.getElementById('server-url-header');
-const qrImg = document.getElementById('qr-code');
 const portInput = document.getElementById('port-input');
 const changePortBtn = document.getElementById('change-port-btn');
+const showQrBtn = document.getElementById('show-qr-btn');
+const qrModal = document.getElementById('qr-modal');
+const qrModalImg = document.getElementById('qr-modal-img');
+const qrCloseBtn = document.getElementById('qr-close-btn');
 
 const input = document.getElementById('teacher-input');
 const sendBtn = document.getElementById('teacher-send');
-
-// Details Toggle
 const detailToggleBtn = document.getElementById('detail-toggle-btn');
 const detailSettings = document.getElementById('detail-settings');
 
-// Font/Size/Color/Fixed
 const btnFontSans = document.getElementById('btn-font-sans');
 const btnFontSerif = document.getElementById('btn-font-serif');
 const btnSizeNormal = document.getElementById('btn-size-normal');
@@ -28,363 +31,290 @@ const textColorBlocks = document.querySelectorAll('.text-color');
 
 const fixedCheckbox = document.getElementById('teacher-fixed');
 const clearFixedBtn = document.getElementById('clear-fixed');
-const fixedPosContainer = document.getElementById('fixed-pos-container');
-const fixedPosSlider = document.getElementById('fixed-pos');
-const posVal = document.getElementById('pos-val');
 
-// Shape Palette
-const addCircleBtn = document.getElementById('add-circle');
-const addSquareBtn = document.getElementById('add-square');
-const shapeColorBlocks = document.querySelectorAll('.shape-color');
-const clearShapesBtn = document.getElementById('clear-shapes');
-const screenPreview = document.getElementById('screen-preview');
-const screenPreviewContainer = document.getElementById('screen-preview-container');
-const previewOverlay = document.getElementById('preview-overlay');
-
-// Other
 const ngInput = document.getElementById('ng-words');
 const ngBtn = document.getElementById('update-ng');
-const ngStatus = document.getElementById('ng-status');
 const historyContainer = document.getElementById('comment-history');
 
+const addCircleBtn = document.getElementById('add-circle');
+const addSquareBtn = document.getElementById('add-square');
+const addLineBtn = document.getElementById('add-line');
+const shapeColorBlocks = document.querySelectorAll('.shape-color');
+const clearShapesBtn = document.getElementById('clear-shapes');
+const previewOverlay = document.getElementById('preview-overlay');
 
-// Initial State
+const pptSyncToggle = document.getElementById('ppt-sync-toggle');
+const pptStatus = document.getElementById('ppt-status');
+const pptNotesDisplay = document.getElementById('ppt-notes-display');
+const timerDisplay = document.getElementById('timer-display');
+const timerToggleBtn = document.getElementById('timer-toggle');
+const timerResetBtn = document.getElementById('timer-reset');
+
+// --- State ---
 let selectedTextColor = '#ffffff';
 let currentFontSize = 'normal';
 let currentFontFamily = 'sans-serif';
-let currentShapeColor = '#ff0000'; // Default shape color
-
-// Active Shape State
-let activeShapeId = null;
+let currentShapeColor = '#ff0000';
+let activeObjectId = null; 
 let isDragging = false;
 let isResizing = false;
 let dragStart = { x: 0, y: 0 };
-let initialShapeState = { left: 0, top: 0, width: 0, height: 0 };
+let initialObjState = { left: 0, top: 0, width: 0, height: 0 };
+let timerSeconds = 0;
+let isTimerRunning = false;
+let pptSyncInterval = null;
 
-// --- UI Logic ---
+// --- Tab Logic ---
+tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        tabContents.forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.target).classList.add('active');
+    });
+});
 
-// Toggle Details
-detailToggleBtn.addEventListener('click', () => {
-    detailSettings.classList.toggle('show');
-    if (detailSettings.classList.contains('show')) {
-        detailToggleBtn.textContent = '▲ 詳細設定を隠す';
+// --- QR Logic ---
+showQrBtn.addEventListener('click', () => {
+    if (currentQrDataUrl) {
+        qrModalImg.src = currentQrDataUrl;
+        qrModal.classList.add('active');
+        if (socket) socket.emit('show_qr', currentQrDataUrl);
+    }
+});
+qrCloseBtn.addEventListener('click', () => {
+    qrModal.classList.remove('active');
+    if (socket) socket.emit('hide_qr');
+});
+
+// --- Timer Logic ---
+function updateTimerDisplay() {
+    const h = Math.floor(timerSeconds / 3600);
+    const m = Math.floor((timerSeconds % 3600) / 60);
+    const s = timerSeconds % 60;
+    timerDisplay.textContent = [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+}
+timerToggleBtn.addEventListener('click', () => {
+    if (isTimerRunning) {
+        clearInterval(timerInterval); isTimerRunning = false;
+        timerToggleBtn.textContent = '開始'; timerToggleBtn.style.background = '#000';
     } else {
-        detailToggleBtn.textContent = '▼ 詳細設定を表示';
+        timerInterval = setInterval(() => { timerSeconds++; updateTimerDisplay(); }, 1000);
+        isTimerRunning = true; timerToggleBtn.textContent = '停止'; timerToggleBtn.style.background = '#d63384'; 
+    }
+});
+timerResetBtn.addEventListener('click', () => {
+    clearInterval(timerInterval); isTimerRunning = false;
+    timerSeconds = 0; updateTimerDisplay();
+    timerToggleBtn.textContent = '開始'; timerToggleBtn.style.background = '#000';
+});
+
+// --- PPT Sync ---
+pptSyncToggle.addEventListener('change', () => {
+    if (pptSyncToggle.checked) {
+        pptStatus.textContent = '同期中...';
+        pptSyncInterval = setInterval(async () => {
+            try {
+                const result = await ipcRenderer.invoke('get-ppt-notes');
+                if (result.status === 'success') {
+                    pptStatus.textContent = `スライド ${result.slideIndex}`;
+                    pptNotesDisplay.textContent = result.notes || '(ノートなし)';
+                } else pptStatus.textContent = result.status;
+            } catch(e) { pptStatus.textContent = 'エラー'; }
+        }, 1000);
+    } else {
+        if (pptSyncInterval) clearInterval(pptSyncInterval);
+        pptSyncInterval = null; pptStatus.textContent = '停止';
     }
 });
 
-// Text Color Selection (Independent)
+// --- UI Logic ---
+detailToggleBtn.addEventListener('click', () => {
+    detailSettings.classList.toggle('show');
+    detailToggleBtn.textContent = detailSettings.classList.contains('show') ? '▲ 閉じる' : '▼ 詳細設定';
+});
 textColorBlocks.forEach(block => {
     block.addEventListener('click', () => {
         textColorBlocks.forEach(b => b.classList.remove('selected'));
-        block.classList.add('selected');
-        selectedTextColor = block.dataset.color;
+        block.classList.add('selected'); selectedTextColor = block.dataset.color;
     });
 });
-
-// Font Family
-btnFontSans.addEventListener('click', () => {
-    currentFontFamily = 'sans-serif';
-    btnFontSans.classList.add('selected');
-    btnFontSerif.classList.remove('selected');
-});
-btnFontSerif.addEventListener('click', () => {
-    currentFontFamily = 'serif';
-    btnFontSerif.classList.add('selected');
-    btnFontSans.classList.remove('selected');
-});
-
-// Font Size
-btnSizeNormal.addEventListener('click', () => {
-    currentFontSize = 'normal';
-    btnSizeNormal.classList.add('selected');
-    btnSizeLarge.classList.remove('selected');
-});
-btnSizeLarge.addEventListener('click', () => {
-    currentFontSize = 'large';
-    btnSizeLarge.classList.add('selected');
-    btnSizeNormal.classList.remove('selected');
-});
-
-// Shape Color Selection (Independent & Revived)
+btnFontSans.addEventListener('click', () => { currentFontFamily = 'sans-serif'; btnFontSans.classList.add('selected'); btnFontSerif.classList.remove('selected'); });
+btnFontSerif.addEventListener('click', () => { currentFontFamily = 'serif'; btnFontSerif.classList.add('selected'); btnFontSans.classList.remove('selected'); });
+btnSizeNormal.addEventListener('click', () => { currentFontSize = 'normal'; btnSizeNormal.classList.add('selected'); btnSizeLarge.classList.remove('selected'); });
+btnSizeLarge.addEventListener('click', () => { currentFontSize = 'large'; btnSizeLarge.classList.add('selected'); btnSizeNormal.classList.remove('selected'); });
 shapeColorBlocks.forEach(block => {
     block.addEventListener('click', () => {
         shapeColorBlocks.forEach(b => b.classList.remove('selected'));
-        block.classList.add('selected');
-        currentShapeColor = block.dataset.color;
-        
-        // Update active shape immediately if one is selected
-        if (activeShapeId && socket) {
-            updateActiveShape({ color: currentShapeColor });
+        block.classList.add('selected'); currentShapeColor = block.dataset.color;
+        if (activeObjectId && socket) {
+            const el = document.querySelector(`[data-id="${activeObjectId}"]`);
+            if (el && el.classList.contains('preview-shape')) updateActiveObject({ color: currentShapeColor });
         }
     });
-});
-
-// Fixed Comment
-fixedCheckbox.addEventListener('change', () => {
-    fixedPosContainer.style.display = fixedCheckbox.checked ? 'block' : 'none';
-});
-
-fixedPosSlider.addEventListener('input', () => {
-    const val = fixedPosSlider.value;
-    posVal.textContent = val + '%';
-    if (socket) socket.emit('update_fixed_position', val);
 });
 
 clearFixedBtn.addEventListener('click', () => {
-    if(socket) socket.emit('clear_fixed_comment');
+    if (socket) socket.emit('clear_fixed_comment');
+    document.querySelectorAll('.preview-fixed-comment').forEach(el => el.remove());
 });
 
-// Sending
-input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendComment();
-});
-sendBtn.addEventListener('click', sendComment);
+// --- Sending & Shapes ---
 
-// NG Words
-ngBtn.addEventListener('click', () => {
-    if(!socket) return;
-    const words = ngInput.value.split(',').map(w => w.trim()).filter(w => w);
-    socket.emit('update_ng_words', words);
-    ngStatus.textContent = 'OK';
-    setTimeout(() => { ngStatus.textContent = ''; }, 2000);
-});
-
-// Port
-changePortBtn.addEventListener('click', () => {
-    const newPort = parseInt(portInput.value, 10);
-    if (newPort > 0 && newPort < 65536) {
-        ipcRenderer.send('change-port', newPort);
-    } else {
-        alert('無効なポート番号');
+function sendComment() {
+    if (!socket) {
+        console.error('Socket not initialized');
+        return;
     }
-});
-
-
-// --- Shape Logic (PowerPoint Style) ---
-
-addCircleBtn.addEventListener('click', () => createShape('circle'));
-addSquareBtn.addEventListener('click', () => createShape('square'));
-
-clearShapesBtn.addEventListener('click', () => {
-    if (socket) socket.emit('clear_shapes');
-    previewOverlay.innerHTML = ''; 
-    activeShapeId = null;
-});
-
-function createShape(type) {
-    if (!socket) return;
-    const id = Date.now().toString(); 
-    const defaultW = 10;
-    const defaultH = 10;
+    const text = input.value.trim();
+    if (!text) return;
     
-    // Create with CURRENT Shape Color
-    const shapeEl = createPreviewElement(id, type, 40, 40, defaultW, defaultH, currentShapeColor);
-    previewOverlay.appendChild(shapeEl);
-    setActiveShape(id);
+    // Default initial position for fixed comments: Center (50, 50)
+    const data = { 
+        text, 
+        color: selectedTextColor, 
+        fontFamily: currentFontFamily, 
+        size: currentFontSize, 
+        isFixed: fixedCheckbox.checked, 
+        x: 50, 
+        y: 50 
+    };
+
+    if (data.isFixed) {
+        data.id = "fixed-" + Date.now();
+        previewOverlay.appendChild(createPreviewFixedElement(data));
+        setActiveObject(data.id);
+    }
     
-    socket.emit('send_shape', {
-        id: id, type: type, x: 40, y: 40, width: defaultW, height: defaultH, color: currentShapeColor
-    });
+    socket.emit('send_comment', data);
+    input.value = '';
 }
 
-function createPreviewElement(id, type, x, y, w, h, color) {
+function createPreviewFixedElement(data) {
     const el = document.createElement('div');
-    el.className = 'preview-shape';
-    el.dataset.id = id;
-    
-    const handle = document.createElement('div');
-    handle.className = 'resize-handle';
-    el.appendChild(handle);
-
-    el.style.left = x + '%';
-    el.style.top = y + '%';
-    el.style.width = w + '%';
-    el.style.height = h + '%';
-    el.style.border = `3px solid ${color}`;
-    
-    if (type === 'circle') el.style.borderRadius = '50%';
-
+    el.className = 'preview-fixed-comment';
+    el.dataset.id = data.id;
+    el.textContent = data.text;
+    Object.assign(el.style, { left: data.x + '%', top: data.y + '%' });
     el.addEventListener('mousedown', (e) => {
-        setActiveShape(id);
-        if (e.target === handle) {
-            startDrag(e, el, 'resize');
-        } else {
-            startDrag(e, el, 'move');
-        }
+        setActiveObject(data.id);
+        startDrag(e, el, 'move');
     });
     return el;
 }
 
-function setActiveShape(id) {
-    activeShapeId = id;
-    document.querySelectorAll('.preview-shape').forEach(el => {
-        if (el.dataset.id === id) el.classList.add('active');
-        else el.classList.remove('active');
-    });
+addCircleBtn.addEventListener('click', () => createShape('circle'));
+addSquareBtn.addEventListener('click', () => createShape('square'));
+addLineBtn.addEventListener('click', () => createShape('line'));
+clearShapesBtn.addEventListener('click', () => { 
+    if (socket) socket.emit('clear_shapes'); 
+    previewOverlay.querySelectorAll('.preview-shape').forEach(el => el.remove());
+    activeObjectId = null; 
+});
+
+window.addEventListener('keydown', (e) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && activeObjectId && document.activeElement.tagName !== 'INPUT') {
+        const el = document.querySelector(`[data-id="${activeObjectId}"]`);
+        if (el) {
+            if (el.classList.contains('preview-shape')) {
+                if (socket) socket.emit('delete_shape', activeObjectId);
+            } else if (el.classList.contains('preview-fixed-comment')) {
+                if (socket) socket.emit('delete_fixed_comment', activeObjectId);
+            }
+            el.remove(); activeObjectId = null;
+        }
+    }
+});
+
+function createShape(type) {
+    if (!socket) return;
+    const id = "shape-" + Date.now();
+    let w = 10, h = 10;
+    if (type === 'line') { w = 20; h = 1; }
+    previewOverlay.appendChild(createPreviewShapeElement(id, type, 40, 40, w, h, currentShapeColor));
+    setActiveObject(id);
+    socket.emit('send_shape', { id, type, x: 40, y: 40, width: w, height: h, color: currentShapeColor });
 }
 
-function updateActiveShape(updates) {
-    const el = document.querySelector(`.preview-shape[data-id="${activeShapeId}"]`);
+function createPreviewShapeElement(id, type, x, y, w, h, color) {
+    const el = document.createElement('div'); el.className = 'preview-shape'; el.dataset.id = id;
+    const handle = document.createElement('div'); handle.className = 'resize-handle'; el.appendChild(handle);
+    Object.assign(el.style, { left: x + '%', top: y + '%', width: w + '%', height: h + '%' });
+    if (type === 'line') el.style.backgroundColor = color;
+    else el.style.border = `3px solid ${color}`;
+    if (type === 'circle') el.style.borderRadius = '50%';
+    el.addEventListener('mousedown', (e) => {
+        setActiveObject(id);
+        if (e.target === handle) startDrag(e, el, 'resize');
+        else startDrag(e, el, 'move');
+    });
+    return el;
+}
+
+function setActiveObject(id) {
+    activeObjectId = id;
+    document.querySelectorAll('.preview-shape, .preview-fixed-comment').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+}
+
+function updateActiveObject(updates = {}) {
+    const el = document.querySelector(`[data-id="${activeObjectId}"]`);
     if (!el) return;
-    if (updates.color) el.style.borderColor = updates.color;
     
     const x = parseFloat(el.style.left);
     const y = parseFloat(el.style.top);
-    const w = parseFloat(el.style.width);
-    const h = parseFloat(el.style.height);
-    const col = el.style.borderColor;
-    const type = el.style.borderRadius === '50%' ? 'circle' : 'square';
-    
-    socket.emit('update_shape', {
-        id: activeShapeId, type: type, x: x, y: y, width: w, height: h, color: col
-    });
+
+    if (el.classList.contains('preview-fixed-comment')) {
+        socket.emit('update_fixed_comment', { id: activeObjectId, x, y });
+    } else {
+        if (updates.color) {
+            if (el.style.border === '' || el.style.border === 'none') el.style.backgroundColor = updates.color;
+            else el.style.borderColor = updates.color;
+        }
+        const w = parseFloat(el.style.width);
+        const h = parseFloat(el.style.height);
+        const isLine = el.style.border === '' || el.style.border === 'none';
+        socket.emit('update_shape', {
+            id: activeObjectId, x, y, width: w, height: h,
+            color: isLine ? el.style.backgroundColor : el.style.borderColor,
+            type: isLine ? 'line' : (el.style.borderRadius === '50%' ? 'circle' : 'square')
+        });
+    }
 }
 
 function startDrag(e, el, mode) {
     e.preventDefault(); e.stopPropagation();
-    if (mode === 'resize') isResizing = true;
-    else isDragging = true;
-
     dragStart = { x: e.clientX, y: e.clientY };
-    initialShapeState = {
-        left: parseFloat(el.style.left), top: parseFloat(el.style.top),
-        width: parseFloat(el.style.width), height: parseFloat(el.style.height)
+    initialObjState = { left: parseFloat(el.style.left), top: parseFloat(el.style.top), width: parseFloat(el.style.width), height: parseFloat(el.style.height) };
+    const rect = previewOverlay.getBoundingClientRect();
+    const onMove = (me) => {
+        const dx = ((me.clientX - dragStart.x) / rect.width) * 100;
+        const dy = ((me.clientY - dragStart.y) / rect.height) * 100;
+        if (mode === 'move') { el.style.left = (initialObjState.left + dx) + '%'; el.style.top = (initialObjState.top + dy) + '%'; }
+        else { el.style.width = Math.max(0.5, initialObjState.width + dx) + '%'; el.style.height = Math.max(0.5, initialObjState.height + dy) + '%'; }
+        updateActiveObject();
     };
-    
-    const parentRect = previewOverlay.getBoundingClientRect();
-    
-    const onMove = (moveEvent) => {
-        const dxPx = moveEvent.clientX - dragStart.x;
-        const dyPx = moveEvent.clientY - dragStart.y;
-        const dxP = (dxPx / parentRect.width) * 100;
-        const dyP = (dyPx / parentRect.height) * 100;
-        
-        if (isDragging) {
-            el.style.left = (initialShapeState.left + dxP) + '%';
-            el.style.top = (initialShapeState.top + dyP) + '%';
-        } else if (isResizing) {
-            el.style.width = Math.max(1, initialShapeState.width + dxP) + '%';
-            el.style.height = Math.max(1, initialShapeState.height + dyP) + '%';
-        }
-        
-        socket.emit('update_shape', {
-            id: activeShapeId,
-            x: parseFloat(el.style.left), y: parseFloat(el.style.top),
-            width: parseFloat(el.style.width), height: parseFloat(el.style.height),
-            color: el.style.borderColor,
-            type: el.style.borderRadius === '50%' ? 'circle' : 'square'
-        });
-    };
-    
-    const onUp = () => {
-        isDragging = false; isResizing = false;
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
 }
 
-
-// --- Desktop Capture & Ratio Sync ---
-async function startCapture() {
-    try {
-        const sources = await desktopCapturer.getSources({ types: ['screen'] });
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-                mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: sources[0].id,
-                    maxWidth: 1920, maxHeight: 1080 
-                }
-            }
-        });
-        
-        screenPreview.srcObject = stream;
-        
-        screenPreview.onloadedmetadata = () => {
-            const w = screenPreview.videoWidth;
-            const h = screenPreview.videoHeight;
-            screenPreviewContainer.style.aspectRatio = `${w} / ${h}`;
-        };
-        
-    } catch (e) {
-        console.error('Error capturing screen:', e);
-    }
-}
-startCapture();
-
-
-// --- Standard Functions ---
-
-function sendComment() {
-    if (!socket) return;
-    const text = input.value;
-    if(!text) return;
-    
-    socket.emit('send_comment', {
-        text: text,
-        color: selectedTextColor,
-        fontFamily: currentFontFamily,
-        size: currentFontSize,
-        isFixed: fixedCheckbox.checked,
-        position: fixedPosSlider.value
-    });
-    input.value = '';
-}
-
-function getLocalIP() {
-    const nets = networkInterfaces();
-    for (const name of Object.keys(nets)) {
-        for (const net of nets[name]) {
-            if ((net.family === 'IPv4' || net.family === 4) && !net.internal) {
-                return net.address;
-            }
-        }
-    }
-    return 'localhost';
-}
-
+// --- Connection ---
 function setupSocket(port) {
     if (socket) { socket.disconnect(); socket.removeAllListeners(); }
-
-    const ip = getLocalIP();
-    currentUrl = `http://${ip}:${port}`;
-    serverUrlHeader.textContent = currentUrl;
-    portInput.value = port; 
-
-    QRCode.toDataURL(currentUrl, { errorCorrectionLevel: 'H' }, (err, data_url) => {
-        if (!err) {
-            qrImg.src = data_url;
-            qrImg.style.display = 'inline-block';
-        }
-    });
-
+    const nets = networkInterfaces(); let ip = 'localhost';
+    for (const n of Object.keys(nets)) { for (const net of nets[n]) { if (net.family === 'IPv4' && !net.internal) { ip = net.address; break; } } }
+    currentUrl = `http://${ip}:${port}`; serverUrlHeader.textContent = currentUrl; portInput.value = port;
+    QRCode.toDataURL(currentUrl, { errorCorrectionLevel: 'H' }, (err, url) => { currentQrDataUrl = url; });
     socket = io(`http://localhost:${port}`);
-
-    socket.on('connect', () => { console.log('Connected: ' + port); });
-
     socket.on('new_comment', (data) => {
-        const div = document.createElement('div');
-        div.className = 'history-item'; 
-        
-        const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        const type = data.isFixed ? '<span style="color:red">[固定]</span> ' : '';
-        const fontStyle = data.fontFamily === 'serif' ? 'font-family: serif;' : '';
-        const sizeInfo = data.size === 'large' ? ' (大)' : '';
-
-        div.innerHTML = `<div style="color:#888; font-size:0.7em;">${time}</div>
-                         <div>${type}<span style="color:${data.color || 'black'}; text-shadow: 0 0 1px #000;">■</span> 
-                         <span style="${fontStyle}">${data.text}</span>${sizeInfo}</div>`;
-        
+        const div = document.createElement('div'); div.className = 'history-item';
+        const time = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        div.innerHTML = `<div style="color:#888; font-size:0.7em;">${time}</div><div>${data.isFixed?'[固定] ':''}<span style="color:${data.color||'black'}; text-shadow:0 0 1px #000;">■</span> <span style="${data.fontFamily==='serif'?'font-family:serif;':''}">${data.text}</span></div>`;
         historyContainer.prepend(div);
     });
-    
-    socket.on('init_ng_words', () => {});
 }
-
-ipcRenderer.on('port-updated', (event, port) => {
-    setupSocket(port);
+changePortBtn.addEventListener('click', () => ipcRenderer.send('change-port', parseInt(portInput.value)));
+ipcRenderer.on('port-updated', (e, p) => setupSocket(p));
+sendBtn.addEventListener('click', sendComment);
+input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendComment();
 });

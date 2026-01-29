@@ -65,14 +65,19 @@ function startServer(port = 3000) {
             }
         });
 
-        // 固定コメント解除
-        socket.on('clear_fixed_comment', () => {
-            io.emit('clear_fixed_comment');
+        // 固定コメント位置更新 (個別)
+        socket.on('update_fixed_comment', (data) => {
+            io.emit('update_fixed_comment', data);
         });
 
-        // 固定コメント位置更新
-        socket.on('update_fixed_position', (position) => {
-            io.emit('update_fixed_position', position);
+        // 固定コメント削除 (個別)
+        socket.on('delete_fixed_comment', (commentId) => {
+            io.emit('delete_fixed_comment', commentId);
+        });
+
+        // 固定コメント解除 (一括)
+        socket.on('clear_fixed_comment', () => {
+            io.emit('clear_fixed_comment');
         });
 
         // 図形送信 (新規作成)
@@ -85,7 +90,20 @@ function startServer(port = 3000) {
             io.emit('update_shape', shapeData);
         });
 
-        // 図形クリア
+        // 図形削除 (単体)
+        socket.on('delete_shape', (shapeId) => {
+            io.emit('delete_shape', shapeId);
+        });
+
+        // QR表示同期
+        socket.on('show_qr', (dataUrl) => {
+            io.emit('show_qr', dataUrl);
+        });
+        socket.on('hide_qr', () => {
+            io.emit('hide_qr');
+        });
+
+        // 図形クリア (全消去)
         socket.on('clear_shapes', () => {
             io.emit('clear_shapes');
         });

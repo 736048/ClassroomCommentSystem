@@ -1,6 +1,7 @@
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 const { startServer } = require('./server/app');
+const { exec } = require('child_process');
 
 let overlayWindow;
 let controlWindow;
@@ -8,8 +9,13 @@ let serverInstance;
 let currentPort = 3000;
 
 function createWindows() {
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { x, y, width, height } = primaryDisplay.bounds;
+    const displays = screen.getAllDisplays();
+    const externalDisplay = displays.find((display) => {
+        return display.bounds.x !== 0 || display.bounds.y !== 0;
+    });
+    
+    const targetDisplay = externalDisplay || screen.getPrimaryDisplay();
+    const { x, y, width, height } = targetDisplay.bounds;
 
     // 1. Comment Overlay Window
     overlayWindow = new BrowserWindow({
@@ -22,6 +28,8 @@ function createWindows() {
         hasShadow: false,
         alwaysOnTop: true,
         enableLargerThanScreen: true,
+        resizable: false,
+        focusable: false, // マウスイベントを受け取らない
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
@@ -29,27 +37,32 @@ function createWindows() {
     });
 
     overlayWindow.setIgnoreMouseEvents(true);
+    // macOSでフルスクリーンアプリの上でも表示されるように設定
     overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver'); // 最前面を維持
+    
+    // フルスクリーンをsetBoundsで擬似的に行う（macOSの標準フルスクリーンは透過が切れるため）
+    overlayWindow.setBounds({ x, y, width, height });
+
     overlayWindow.loadFile(path.join(__dirname, 'renderer/overlay.html'));
 
     // 2. Control Panel Window
     controlWindow = new BrowserWindow({
-        width: 400,
-        height: 600,
+        width: 1200,
+        height: 800,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
         }
     });
 
+    controlWindow.maximize();
     controlWindow.loadFile(path.join(__dirname, 'renderer/control.html'));
     
-    // Initial port send (after load)
     controlWindow.webContents.on('did-finish-load', () => {
         controlWindow.webContents.send('port-updated', currentPort);
     });
     
-    // Also send to overlay
     overlayWindow.webContents.on('did-finish-load', () => {
         overlayWindow.webContents.send('port-updated', currentPort);
     });
@@ -59,12 +72,13 @@ function createWindows() {
     });
 }
 
-// Screen resize handling
 function setupScreenListeners() {
     const updateOverlayBounds = () => {
         if (overlayWindow && !overlayWindow.isDestroyed()) {
-            const primaryDisplay = screen.getPrimaryDisplay();
-            const { x, y, width, height } = primaryDisplay.bounds;
+            const displays = screen.getAllDisplays();
+            const externalDisplay = displays.find((display) => display.bounds.x !== 0 || display.bounds.y !== 0);
+            const targetDisplay = externalDisplay || screen.getPrimaryDisplay();
+            const { x, y, width, height } = targetDisplay.bounds;
             overlayWindow.setBounds({ x, y, width, height });
         }
     };
@@ -74,74 +88,89 @@ function setupScreenListeners() {
     screen.on('display-removed', updateOverlayBounds);
 }
 
-// IPC Handlers
 ipcMain.on('change-port', (event, newPort) => {
     if (serverInstance) {
-        console.log(`Closing server on port ${currentPort}...`);
-        
-        const closeServer = () => {
-            if (serverInstance.server) {
-                if (serverInstance.server.closeAllConnections) {
-                    serverInstance.server.closeAllConnections();
-                }
-                serverInstance.server.close(() => {
-                    console.log('Server closed.');
-                    startNewServer(newPort);
-                });
-            } else {
-                startNewServer(newPort);
-            }
-        };
-
         if (serverInstance.io) {
-            // Notify clients to disconnect/reload
             serverInstance.io.emit('force_disconnect');
-            
-            // Give a tiny delay for the message to send? No, io.close might be fast. 
-            // io.emit is async in nature but we can try just sending it.
-            
             serverInstance.io.close(() => {
-                closeServer();
+                if (serverInstance.server) {
+                    serverInstance.server.close(() => {
+                        startNewServer(newPort);
+                    });
+                }
             });
-        } else {
-            closeServer();
         }
     } else {
         startNewServer(newPort);
     }
 });
 
+ipcMain.handle('get-ppt-notes', async () => {
+    return new Promise((resolve) => {
+        const script = `
+            tell application "Microsoft PowerPoint"
+                if not running then return "NOT_RUNNING"
+                try
+                    if (count of slide show windows) is 0 then return "NO_SHOW"
+                    set currentIndex to current show position of slide show view of slide show window 1
+                    set activePres to active presentation
+                    set currentSlide to slide currentIndex of activePres
+                    set notesText to ""
+                    try
+                        set notesPage to notes page of currentSlide
+                        try
+                            set notesText to content of text range of text frame of place holder 2 of notesPage
+                        on error
+                            repeat with s in shapes of notesPage
+                                if has text frame of s then
+                                    if content of text range of text frame of s is not "" then
+                                        set notesText to content of text range of text frame of s
+                                        exit repeat
+                                    end if
+                                end if
+                            end repeat
+                        end try
+                    on error
+                        set notesText to "(ノート取得不可)"
+                    end try
+                    return (currentIndex as string) & "|||" & notesText
+                on error errStr
+                    return "ERROR: " & errStr
+                end try
+            end tell
+        `;
+        exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
+            if (error) { resolve({ status: 'error', message: error.message }); return; }
+            let result = stdout.trim();
+            if (result === 'NOT_RUNNING') resolve({ status: 'not_running' });
+            else if (result === 'NO_SHOW') resolve({ status: 'no_show' });
+            else if (result.startsWith('ERROR')) resolve({ status: 'error', message: result });
+            else {
+                result = result.replace(/\r/g, '\n');
+                const parts = result.split('|||');
+                resolve({ status: 'success', slideIndex: parts[0], notes: parts.length > 1 ? parts[1] : '' });
+            }
+        });
+    });
+});
+
 function startNewServer(port) {
     try {
         currentPort = port;
         serverInstance = startServer(port);
-        console.log(`Server started on port ${port}`);
-        
-        // Notify windows
         if (controlWindow) controlWindow.webContents.send('port-updated', port);
         if (overlayWindow) overlayWindow.webContents.send('port-updated', port);
-        
     } catch (e) {
         console.error('Failed to start server:', e);
     }
 }
 
 app.whenReady().then(() => {
-    // Start initial server
     startNewServer(currentPort);
-    
     createWindows();
     setupScreenListeners();
-
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindows();
-        }
-    });
 });
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+    if (process.platform !== 'darwin') app.quit();
 });
