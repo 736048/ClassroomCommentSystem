@@ -16,6 +16,8 @@ function startServer(port = 3000) {
 
     // NGワードの読み込み
     let ngWords = [];
+    let studentColor = '#FFFFFF'; // デフォルトは白
+
     try {
         if (fs.existsSync(NG_WORDS_PATH)) {
             const data = fs.readFileSync(NG_WORDS_PATH, 'utf8');
@@ -27,8 +29,15 @@ function startServer(port = 3000) {
     }
 
     io.on('connection', (socket) => {
-        // 接続時に現在のNGワードを送信（先生用）
+        // 接続時に現在のNGワードと生徒用カラーを送信
         socket.emit('init_ng_words', ngWords);
+        socket.emit('update_student_color', studentColor);
+
+        // 生徒用カラー更新（先生側から）
+        socket.on('set_student_color', (color) => {
+            studentColor = color;
+            io.emit('update_student_color', studentColor);
+        });
 
         // コメント受信
         socket.on('send_comment', (data) => {

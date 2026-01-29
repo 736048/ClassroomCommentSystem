@@ -133,7 +133,10 @@
             <div class="column-left">
                 <div class="section" style="flex-grow: 0;">
                     <h2>図形・固定管理</h2>
-                    <div id="screen-preview-container"><div id="preview-overlay"></div></div>
+                    <div id="screen-preview-container">
+                        <img id="ppt-slide-preview" style="width: 100%; height: 100%; object-fit: contain; display: none;">
+                        <div id="preview-overlay"></div>
+                    </div>
                     <div class="palette-controls">
                         <div id="add-circle" class="shape-btn">●</div>
                         <div id="add-square" class="shape-btn">■</div>
@@ -197,6 +200,16 @@
                                 <div class="text-color" data-color="#000000" style="background: #000;"></div>
                             </div>
                         </div>
+                        <div class="flex-row" style="align-items: center; margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
+                            <label style="width: 100px; font-size: 0.8rem;">生徒の文字色</label>
+                            <div style="display: flex; gap: 8px;">
+                                <div class="student-color-block selected" data-color="#ffffff" style="width: 25px; height: 25px; background: #fff; border: 1px solid #ccc; cursor: pointer;"></div>
+                                <div class="student-color-block" data-color="#ff6b6b" style="width: 25px; height: 25px; background: #ff6b6b; cursor: pointer;"></div>
+                                <div class="student-color-block" data-color="#4dabf7" style="width: 25px; height: 25px; background: #4dabf7; cursor: pointer;"></div>
+                                <div class="student-color-block" data-color="#51cf66" style="width: 25px; height: 25px; background: #51cf66; cursor: pointer;"></div>
+                                <div class="student-color-block" data-color="#ffff00" style="width: 25px; height: 25px; background: #ffff00; cursor: pointer;"></div>
+                            </div>
+                        </div>
                         <div class="flex-row" style="margin-top: 10px; border-top: 1px solid #ddd; padding-top: 10px;">
                             <label><input type="checkbox" id="teacher-fixed"> 固定表示</label>
                             <button id="clear-fixed" class="secondary" style="margin-left: auto;">全解除</button>
@@ -209,6 +222,11 @@
                     </div>
                 </div>
                 <div id="tab-presenter" class="tab-content">
+                    <div class="flex-row" style="justify-content: center; gap: 20px; margin-bottom: 20px; padding: 10px; background: #eee; border: 2px solid #000;">
+                        <button id="ppt-prev-btn" style="flex: 1; font-size: 1.5rem;">◀ 戻る</button>
+                        <button id="ppt-next-btn" style="flex: 1; font-size: 1.5rem;">進む ▶</button>
+                    </div>
+                    
                     <div class="flex-row" style="justify-content: space-between;">
                         <h2>ノート</h2>
                         <label><input type="checkbox" id="ppt-sync-toggle"> 同期ON</label>

@@ -4,14 +4,21 @@ const btn = document.getElementById('send-btn');
 const statusDiv = document.getElementById('status');
 const historyList = document.getElementById('history-list');
 
+let currentStudentColor = '#FFFFFF';
+
+// Listen for color updates from server
+socket.on('update_student_color', (color) => {
+    currentStudentColor = color;
+});
+
 function send() {
     const text = input.value.trim();
     if (!text) return;
     
-    // Send to server (Color is fixed to White)
+    // Send to server (Color is fixed to the one chosen by the teacher)
     socket.emit('send_comment', {
         text: text,
-        color: '#FFFFFF'
+        color: currentStudentColor
     });
     
     input.value = '';

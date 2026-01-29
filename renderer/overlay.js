@@ -17,16 +17,19 @@ function setupSocket(port) {
         div.className = 'comment';
         div.textContent = data.text;
         
+        // Font Family
         if (data.fontFamily === 'serif') {
             div.style.fontFamily = '"Hiragino Mincho ProN", "YuMincho", "Times New Roman", serif';
         } else {
             div.style.fontFamily = '"Helvetica Neue", Arial, sans-serif';
         }
         
+        // Font Size
         let baseSize = 48; 
         if (data.size === 'large') baseSize = 96;
         div.style.fontSize = baseSize + 'px';
 
+        // Color handling
         if (data.color) {
             div.style.color = data.color;
             const c = data.color.toLowerCase();
@@ -41,6 +44,8 @@ function setupSocket(port) {
         // 固定コメント処理
         if (data.isFixed) {
             createOrUpdateFixedComment(data);
+            // new_commentで生成したdivは不要なので削除（createOrUpdateFixedComment内で別途生成・管理）
+            div.remove();
             return;
         }
         
@@ -107,7 +112,34 @@ function createOrUpdateFixedComment(data) {
     }
     
     el.textContent = data.text || el.textContent;
-    if (data.color) el.style.color = data.color;
+
+    // Font Family Reflect
+    if (data.fontFamily) {
+        if (data.fontFamily === 'serif') {
+            el.style.fontFamily = '"Hiragino Mincho ProN", "YuMincho", "Times New Roman", serif';
+        } else {
+            el.style.fontFamily = '"Helvetica Neue", Arial, sans-serif';
+        }
+    }
+
+    // Font Size Reflect
+    if (data.size) {
+        let baseSize = 48; 
+        if (data.size === 'large') baseSize = 96;
+        el.style.fontSize = baseSize + 'px';
+    }
+
+    // Color & Stroke Reflect
+    if (data.color) {
+        el.style.color = data.color;
+        const c = data.color.toLowerCase();
+        if (c === '#000000' || c === '#000' || c === 'black') {
+            el.classList.add('dark-text');
+        } else {
+            el.classList.remove('dark-text');
+        }
+    }
+    
     if (data.x !== undefined) el.style.left = data.x + '%';
     if (data.y !== undefined) el.style.top = data.y + '%';
     el.style.display = 'block';

@@ -46,6 +46,9 @@ const previewOverlay = document.getElementById('preview-overlay');
 const pptSyncToggle = document.getElementById('ppt-sync-toggle');
 const pptStatus = document.getElementById('ppt-status');
 const pptNotesDisplay = document.getElementById('ppt-notes-display');
+const pptPrevBtn = document.getElementById('ppt-prev-btn');
+const pptNextBtn = document.getElementById('ppt-next-btn');
+
 const timerDisplay = document.getElementById('timer-display');
 const timerToggleBtn = document.getElementById('timer-toggle');
 const timerResetBtn = document.getElementById('timer-reset');
@@ -63,6 +66,7 @@ let initialObjState = { left: 0, top: 0, width: 0, height: 0 };
 let timerSeconds = 0;
 let isTimerRunning = false;
 let pptSyncInterval = null;
+let timerInterval = null;
 
 // --- Tab Logic ---
 tabBtns.forEach(btn => {
@@ -115,20 +119,40 @@ pptSyncToggle.addEventListener('change', () => {
         pptStatus.textContent = '同期中...';
         pptSyncInterval = setInterval(async () => {
             try {
-                const result = await ipcRenderer.invoke('get-ppt-notes');
+                const result = await ipcRenderer.invoke('get-ppt-data');
                 if (result.status === 'success') {
                     pptStatus.textContent = `スライド ${result.slideIndex}`;
-                    pptNotesDisplay.textContent = result.notes || '(ノートなし)';
+                    // Notes are already normalized (\n) by main process
+                    if (pptNotesDisplay.textContent !== result.notes) {
+                         pptNotesDisplay.textContent = result.notes || '(ノートなし)';
+                    }
                 } else pptStatus.textContent = result.status;
             } catch(e) { pptStatus.textContent = 'エラー'; }
-        }, 1000);
+        }, 1500);
     } else {
         if (pptSyncInterval) clearInterval(pptSyncInterval);
-        pptSyncInterval = null; pptStatus.textContent = '停止';
+        pptSyncInterval = null; 
+        pptStatus.textContent = '停止';
     }
 });
 
-// --- UI Logic ---
+pptPrevBtn.addEventListener('click', async () => {
+    await ipcRenderer.invoke('ppt-prev-slide');
+});
+pptNextBtn.addEventListener('click', async () => {
+    await ipcRenderer.invoke('ppt-next-slide');
+});
+
+// UI Logic
+const studentColorBlocks = document.querySelectorAll('.student-color-block');
+studentColorBlocks.forEach(block => {
+    block.addEventListener('click', () => {
+        studentColorBlocks.forEach(b => b.style.border = '1px solid #ccc');
+        block.style.border = '3px solid #000';
+        if (socket) socket.emit('set_student_color', block.dataset.color);
+    });
+});
+
 detailToggleBtn.addEventListener('click', () => {
     detailSettings.classList.toggle('show');
     detailToggleBtn.textContent = detailSettings.classList.contains('show') ? '▲ 閉じる' : '▼ 詳細設定';
@@ -160,32 +184,16 @@ clearFixedBtn.addEventListener('click', () => {
 });
 
 // --- Sending & Shapes ---
-
 function sendComment() {
-    if (!socket) {
-        console.error('Socket not initialized');
-        return;
-    }
+    if (!socket) return;
     const text = input.value.trim();
     if (!text) return;
-    
-    // Default initial position for fixed comments: Center (50, 50)
-    const data = { 
-        text, 
-        color: selectedTextColor, 
-        fontFamily: currentFontFamily, 
-        size: currentFontSize, 
-        isFixed: fixedCheckbox.checked, 
-        x: 50, 
-        y: 50 
-    };
-
+    const data = { text, color: selectedTextColor, fontFamily: currentFontFamily, size: currentFontSize, isFixed: fixedCheckbox.checked, x: 50, y: 50 };
     if (data.isFixed) {
         data.id = "fixed-" + Date.now();
         previewOverlay.appendChild(createPreviewFixedElement(data));
         setActiveObject(data.id);
     }
-    
     socket.emit('send_comment', data);
     input.value = '';
 }
@@ -212,18 +220,17 @@ clearShapesBtn.addEventListener('click', () => {
     activeObjectId = null; 
 });
 
-window.addEventListener('keydown', (e) => {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && activeObjectId && document.activeElement.tagName !== 'INPUT') {
+window.addEventListener('keydown', async (e) => {
+    if (document.activeElement.tagName === 'INPUT') return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
         const el = document.querySelector(`[data-id="${activeObjectId}"]`);
         if (el) {
-            if (el.classList.contains('preview-shape')) {
-                if (socket) socket.emit('delete_shape', activeObjectId);
-            } else if (el.classList.contains('preview-fixed-comment')) {
-                if (socket) socket.emit('delete_fixed_comment', activeObjectId);
-            }
+            if (el.classList.contains('preview-shape')) { if (socket) socket.emit('delete_shape', activeObjectId); }
+            else if (el.classList.contains('preview-fixed-comment')) { if (socket) socket.emit('delete_fixed_comment', activeObjectId); }
             el.remove(); activeObjectId = null;
         }
-    }
+    } else if (e.key === 'ArrowLeft') { await ipcRenderer.invoke('ppt-prev-slide'); }
+    else if (e.key === 'ArrowRight') { await ipcRenderer.invoke('ppt-next-slide'); }
 });
 
 function createShape(type) {
@@ -259,10 +266,8 @@ function setActiveObject(id) {
 function updateActiveObject(updates = {}) {
     const el = document.querySelector(`[data-id="${activeObjectId}"]`);
     if (!el) return;
-    
     const x = parseFloat(el.style.left);
     const y = parseFloat(el.style.top);
-
     if (el.classList.contains('preview-fixed-comment')) {
         socket.emit('update_fixed_comment', { id: activeObjectId, x, y });
     } else {
@@ -270,14 +275,9 @@ function updateActiveObject(updates = {}) {
             if (el.style.border === '' || el.style.border === 'none') el.style.backgroundColor = updates.color;
             else el.style.borderColor = updates.color;
         }
-        const w = parseFloat(el.style.width);
-        const h = parseFloat(el.style.height);
+        const w = parseFloat(el.style.width); const h = parseFloat(el.style.height);
         const isLine = el.style.border === '' || el.style.border === 'none';
-        socket.emit('update_shape', {
-            id: activeObjectId, x, y, width: w, height: h,
-            color: isLine ? el.style.backgroundColor : el.style.borderColor,
-            type: isLine ? 'line' : (el.style.borderRadius === '50%' ? 'circle' : 'square')
-        });
+        socket.emit('update_shape', { id: activeObjectId, x, y, width: w, height: h, color: isLine ? el.style.backgroundColor : el.style.borderColor, type: isLine ? 'line' : (el.style.borderRadius === '50%' ? 'circle' : 'square') });
     }
 }
 
@@ -315,6 +315,15 @@ function setupSocket(port) {
 changePortBtn.addEventListener('click', () => ipcRenderer.send('change-port', parseInt(portInput.value)));
 ipcRenderer.on('port-updated', (e, p) => setupSocket(p));
 sendBtn.addEventListener('click', sendComment);
-input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendComment();
+input.addEventListener('keypress', (e) => e.key === 'Enter' && sendComment());
+
+ngBtn.addEventListener('click', () => {
+    if (!socket) return;
+    const words = ngInput.value.split(',').map(w => w.trim()).filter(w => w);
+    socket.emit('update_ng_words', words);
+    const ngStatus = document.getElementById('ng-status');
+    if (ngStatus) {
+        ngStatus.textContent = '更新しました';
+        setTimeout(() => { ngStatus.textContent = ''; }, 2000);
+    }
 });
