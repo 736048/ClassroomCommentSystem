@@ -7,12 +7,12 @@ let controlWindow;
 
 function createWindows() {
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width, height } = primaryDisplay.workAreaSize;
+    const { x, y, width, height } = primaryDisplay.bounds;
 
     // 1. Comment Overlay Window
     overlayWindow = new BrowserWindow({
-        x: 0,
-        y: 0,
+        x: x,
+        y: y,
         width: width,
         height: height,
         transparent: true,
@@ -52,11 +52,27 @@ function createWindows() {
     });
 }
 
+// Screen resize handling
+function setupScreenListeners() {
+    const updateOverlayBounds = () => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+            const primaryDisplay = screen.getPrimaryDisplay();
+            const { x, y, width, height } = primaryDisplay.bounds;
+            overlayWindow.setBounds({ x, y, width, height });
+        }
+    };
+
+    screen.on('display-metrics-changed', updateOverlayBounds);
+    screen.on('display-added', updateOverlayBounds);
+    screen.on('display-removed', updateOverlayBounds);
+}
+
 app.whenReady().then(() => {
     // Start Express/Socket.io Server
     startServer(3000);
     
     createWindows();
+    setupScreenListeners();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {

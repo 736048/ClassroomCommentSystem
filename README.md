@@ -60,6 +60,16 @@ npm start
 *   `public/`: 生徒用画面 (HTML/CSS/JS)
 *   `renderer/`: 先生用管理画面およびオーバーレイ画面 (HTML/CSS/JS)
 
+## 技術スタック
+
+*   **Electron**: デスクトップアプリケーションフレームワーク
+*   **Node.js**: バックエンドランタイム
+*   **Express**: Webサーバーフレームワーク
+*   **Socket.io**: リアルタイム双方向通信
+*   **HTML5 / CSS3**: フロントエンド UI/UX
+*   **Vanilla JavaScript**: フロントエンドロジック (フレームワークなし)
+*   **QRCode**: QRコード生成ライブラリ
+
 ## ライセンス
 
 ISC
