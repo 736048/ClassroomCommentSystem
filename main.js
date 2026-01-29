@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
 const { startServer } = require('./server/app');
 const { exec } = require('child_process');
@@ -77,10 +77,8 @@ ipcMain.handle('get-ppt-data', async () => {
                     
                     set notesText to ""
                     try
-                        -- 標準的なノートプレースホルダーから取得
                         set notesText to content of text range of text frame of place holder 2 of notes page of currentSlide
                     on error
-                        -- 取得できない場合は全シェイプから検索
                         repeat with shp in shapes of notes page of currentSlide
                             if has text frame of shp then
                                 set t to content of text range of text frame of shp
@@ -91,30 +89,22 @@ ipcMain.handle('get-ppt-data', async () => {
                             end if
                         end repeat
                     end try
-                    
                     return (currentIndex as string) & "|||" & notesText
                 on error errStr
                     return "ERROR: " & errStr
                 end try
             end tell
         `;
-
         exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
             if (error) { resolve({ status: 'error', message: error.message }); return; }
             let result = stdout.trim();
-            
             if (result === 'NOT_RUNNING') resolve({ status: 'not_running' });
             else if (result === 'NO_SHOW') resolve({ status: 'no_show' });
             else if (result.startsWith('ERROR')) resolve({ status: 'error', message: result });
             else {
-                // Node.js側で改行を確実に正規化 (\r -> \n)
                 result = result.replace(/\r/g, '\n');
                 const parts = result.split('|||');
-                resolve({
-                    status: 'success', 
-                    slideIndex: parts[0], 
-                    notes: parts.length > 1 ? parts[1] : '' 
-                });
+                resolve({ status: 'success', slideIndex: parts[0], notes: parts.length > 1 ? parts[1] : '' });
             }
         });
     });
@@ -123,42 +113,21 @@ ipcMain.handle('get-ppt-data', async () => {
 // PPT Navigation
 ipcMain.handle('ppt-prev-slide', async () => {
     return new Promise((resolve) => {
-        const script = `
-            tell application "Microsoft PowerPoint"
-                try
-                    if (count of slide show windows) > 0 then
-                        go to previous slide slide show view of slide show window 1
-                        return "SUCCESS"
-                    else
-                        return "NO_SHOW"
-                    end if
-                on error errStr
-                    return "ERROR: " & errStr
-                end try
-            end tell
-        `;
+        const script = `tell application \"Microsoft PowerPoint\" to try to go to previous slide slide show view of slide show window 1`;
         exec(`osascript -e '${script}'`, (error, stdout) => resolve(stdout.trim()));
     });
 });
 
 ipcMain.handle('ppt-next-slide', async () => {
     return new Promise((resolve) => {
-        const script = `
-            tell application "Microsoft PowerPoint"
-                try
-                    if (count of slide show windows) > 0 then
-                        go to next slide slide show view of slide show window 1
-                        return "SUCCESS"
-                    else
-                        return "NO_SHOW"
-                    end if
-                on error errStr
-                    return "ERROR: " & errStr
-                end try
-            end tell
-        `;
+        const script = `tell application \"Microsoft PowerPoint\" to try to go to next slide slide show view of slide show window 1`;
         exec(`osascript -e '${script}'`, (error, stdout) => resolve(stdout.trim()));
     });
+});
+
+// 4. Get Screen Sources (Main process version is more reliable for permissions)
+ipcMain.handle('get-screen-sources', async () => {
+    return await desktopCapturer.getSources({ types: ['screen', 'window'] });
 });
 
 function startNewServer(port) {

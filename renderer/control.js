@@ -28,6 +28,7 @@ const btnFontSerif = document.getElementById('btn-font-serif');
 const btnSizeNormal = document.getElementById('btn-size-normal');
 const btnSizeLarge = document.getElementById('btn-size-large');
 const textColorBlocks = document.querySelectorAll('.text-color');
+const studentColorBlocks = document.querySelectorAll('.student-color-block');
 
 const fixedCheckbox = document.getElementById('teacher-fixed');
 const clearFixedBtn = document.getElementById('clear-fixed');
@@ -42,6 +43,10 @@ const addLineBtn = document.getElementById('add-line');
 const shapeColorBlocks = document.querySelectorAll('.shape-color');
 const clearShapesBtn = document.getElementById('clear-shapes');
 const previewOverlay = document.getElementById('preview-overlay');
+const screenPreview = document.getElementById('screen-preview');
+const screenSelector = document.getElementById('screen-selector');
+const refreshScreensBtn = document.getElementById('refresh-screens-btn');
+const screenPreviewContainer = document.getElementById('screen-preview-container');
 
 const pptSyncToggle = document.getElementById('ppt-sync-toggle');
 const pptStatus = document.getElementById('ppt-status');
@@ -98,20 +103,94 @@ function updateTimerDisplay() {
     const s = timerSeconds % 60;
     timerDisplay.textContent = [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
+
 timerToggleBtn.addEventListener('click', () => {
     if (isTimerRunning) {
         clearInterval(timerInterval); isTimerRunning = false;
-        timerToggleBtn.textContent = '開始'; timerToggleBtn.style.background = '#000';
+        timerToggleBtn.textContent = '開始';
     } else {
         timerInterval = setInterval(() => { timerSeconds++; updateTimerDisplay(); }, 1000);
-        isTimerRunning = true; timerToggleBtn.textContent = '停止'; timerToggleBtn.style.background = '#d63384'; 
+        isTimerRunning = true; timerToggleBtn.textContent = '停止';
     }
 });
+
 timerResetBtn.addEventListener('click', () => {
     clearInterval(timerInterval); isTimerRunning = false;
     timerSeconds = 0; updateTimerDisplay();
-    timerToggleBtn.textContent = '開始'; timerToggleBtn.style.background = '#000';
+    timerToggleBtn.textContent = '開始';
 });
+
+// --- Desktop Capture ---
+async function startCapture(sourceId = null) {
+    try {
+        console.log('Fetching screen sources via main process...');
+        // メインプロセス経由で取得することで権限ポップアップを促す
+        const sources = await ipcRenderer.invoke('get-screen-sources');
+        
+        if (!sources || sources.length === 0) {
+            console.warn('No sources found');
+            return;
+        }
+
+        screenSelector.innerHTML = '';
+        sources.forEach((source) => {
+            const option = document.createElement('option');
+            option.value = source.id;
+            option.text = source.name || `Source ${source.id}`;
+            screenSelector.appendChild(option);
+        });
+        
+        screenSelector.onchange = (e) => startCapture(e.target.value);
+
+        let selectedId = sourceId;
+        if (!selectedId) {
+            const extScreen = sources.find(s => s.name.includes("2") || s.id.includes("screen:1"));
+            const slideShow = sources.find(s => s.name.includes('Slide Show') || s.name.includes('スライドショー'));
+            selectedId = extScreen ? extScreen.id : (slideShow ? slideShow.id : sources[0].id);
+        }
+        screenSelector.value = selectedId;
+
+        console.log('Requesting stream for:', selectedId);
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+                mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: selectedId,
+                    maxWidth: 1920,
+                    maxHeight: 1080
+                }
+            }
+        });
+        
+        if (screenPreview.srcObject) {
+            screenPreview.srcObject.getTracks().forEach(track => track.stop());
+        }
+        
+        screenPreview.srcObject = stream;
+        
+        // 即座に再生を試みる
+        screenPreview.play().catch(e => {
+            console.error('Initial play failed, retrying on metadata:', e);
+        });
+
+        screenPreview.onloadedmetadata = () => {
+            screenPreview.play().catch(e => console.error('Play failed again:', e));
+            const w = screenPreview.videoWidth; const h = screenPreview.videoHeight;
+            if (w > 0 && h > 0) {
+                screenPreviewContainer.style.aspectRatio = `${w} / ${h}`;
+            }
+            console.log(`Capture started: ${w}x${h}`);
+        };
+    } catch (e) { 
+        console.error('Capture Error:', e);
+        if (e.name === 'NotAllowedError' || e.message.includes('permission')) {
+            alert('画面キャプチャの権限がありません。\n1. システム設定 > プライバシーとセキュリティ > 画面収録 を開く\n2. Electronまたはターミナルのスイッチを一度「オフ」にしてから「オン」にする\n3. アプリを完全に終了して再起動する');
+        }
+    }
+}
+
+refreshScreensBtn.addEventListener('click', () => startCapture());
 
 // --- PPT Sync ---
 pptSyncToggle.addEventListener('change', () => {
@@ -122,29 +201,23 @@ pptSyncToggle.addEventListener('change', () => {
                 const result = await ipcRenderer.invoke('get-ppt-data');
                 if (result.status === 'success') {
                     pptStatus.textContent = `スライド ${result.slideIndex}`;
-                    // Notes are already normalized (\n) by main process
-                    if (pptNotesDisplay.textContent !== result.notes) {
-                         pptNotesDisplay.textContent = result.notes || '(ノートなし)';
+                    const notes = (result.notes || '').split('__NEWLINE__').join('\n');
+                    if (pptNotesDisplay.textContent !== notes) {
+                         pptNotesDisplay.textContent = notes || '(ノートなし)';
                     }
                 } else pptStatus.textContent = result.status;
             } catch(e) { pptStatus.textContent = 'エラー'; }
         }, 1500);
     } else {
         if (pptSyncInterval) clearInterval(pptSyncInterval);
-        pptSyncInterval = null; 
-        pptStatus.textContent = '停止';
+        pptSyncInterval = null; pptStatus.textContent = '停止';
     }
 });
 
-pptPrevBtn.addEventListener('click', async () => {
-    await ipcRenderer.invoke('ppt-prev-slide');
-});
-pptNextBtn.addEventListener('click', async () => {
-    await ipcRenderer.invoke('ppt-next-slide');
-});
+pptPrevBtn.addEventListener('click', () => ipcRenderer.invoke('ppt-prev-slide'));
+pptNextBtn.addEventListener('click', () => ipcRenderer.invoke('ppt-next-slide'));
 
-// UI Logic
-const studentColorBlocks = document.querySelectorAll('.student-color-block');
+// --- UI Logic ---
 studentColorBlocks.forEach(block => {
     block.addEventListener('click', () => {
         studentColorBlocks.forEach(b => b.style.border = '1px solid #ccc');
@@ -157,24 +230,24 @@ detailToggleBtn.addEventListener('click', () => {
     detailSettings.classList.toggle('show');
     detailToggleBtn.textContent = detailSettings.classList.contains('show') ? '▲ 閉じる' : '▼ 詳細設定';
 });
+
 textColorBlocks.forEach(block => {
     block.addEventListener('click', () => {
         textColorBlocks.forEach(b => b.classList.remove('selected'));
         block.classList.add('selected'); selectedTextColor = block.dataset.color;
     });
 });
+
 btnFontSans.addEventListener('click', () => { currentFontFamily = 'sans-serif'; btnFontSans.classList.add('selected'); btnFontSerif.classList.remove('selected'); });
 btnFontSerif.addEventListener('click', () => { currentFontFamily = 'serif'; btnFontSerif.classList.add('selected'); btnFontSans.classList.remove('selected'); });
 btnSizeNormal.addEventListener('click', () => { currentFontSize = 'normal'; btnSizeNormal.classList.add('selected'); btnSizeLarge.classList.remove('selected'); });
 btnSizeLarge.addEventListener('click', () => { currentFontSize = 'large'; btnSizeLarge.classList.add('selected'); btnSizeNormal.classList.remove('selected'); });
+
 shapeColorBlocks.forEach(block => {
     block.addEventListener('click', () => {
         shapeColorBlocks.forEach(b => b.classList.remove('selected'));
         block.classList.add('selected'); currentShapeColor = block.dataset.color;
-        if (activeObjectId && socket) {
-            const el = document.querySelector(`[data-id="${activeObjectId}"]`);
-            if (el && el.classList.contains('preview-shape')) updateActiveObject({ color: currentShapeColor });
-        }
+        if (activeObjectId && socket) updateActiveObject({ color: currentShapeColor });
     });
 });
 
@@ -186,8 +259,7 @@ clearFixedBtn.addEventListener('click', () => {
 // --- Sending & Shapes ---
 function sendComment() {
     if (!socket) return;
-    const text = input.value.trim();
-    if (!text) return;
+    const text = input.value.trim(); if (!text) return;
     const data = { text, color: selectedTextColor, fontFamily: currentFontFamily, size: currentFontSize, isFixed: fixedCheckbox.checked, x: 50, y: 50 };
     if (data.isFixed) {
         data.id = "fixed-" + Date.now();
@@ -201,13 +273,9 @@ function sendComment() {
 function createPreviewFixedElement(data) {
     const el = document.createElement('div');
     el.className = 'preview-fixed-comment';
-    el.dataset.id = data.id;
-    el.textContent = data.text;
+    el.dataset.id = data.id; el.textContent = data.text;
     Object.assign(el.style, { left: data.x + '%', top: data.y + '%' });
-    el.addEventListener('mousedown', (e) => {
-        setActiveObject(data.id);
-        startDrag(e, el, 'move');
-    });
+    el.addEventListener('mousedown', (e) => { setActiveObject(data.id); startDrag(e, el, 'move'); });
     return el;
 }
 
@@ -236,8 +304,7 @@ window.addEventListener('keydown', async (e) => {
 function createShape(type) {
     if (!socket) return;
     const id = "shape-" + Date.now();
-    let w = 10, h = 10;
-    if (type === 'line') { w = 20; h = 1; }
+    let w = 10, h = 10; if (type === 'line') { w = 20; h = 1; }
     previewOverlay.appendChild(createPreviewShapeElement(id, type, 40, 40, w, h, currentShapeColor));
     setActiveObject(id);
     socket.emit('send_shape', { id, type, x: 40, y: 40, width: w, height: h, color: currentShapeColor });
@@ -247,14 +314,9 @@ function createPreviewShapeElement(id, type, x, y, w, h, color) {
     const el = document.createElement('div'); el.className = 'preview-shape'; el.dataset.id = id;
     const handle = document.createElement('div'); handle.className = 'resize-handle'; el.appendChild(handle);
     Object.assign(el.style, { left: x + '%', top: y + '%', width: w + '%', height: h + '%' });
-    if (type === 'line') el.style.backgroundColor = color;
-    else el.style.border = `3px solid ${color}`;
+    if (type === 'line') el.style.backgroundColor = color; else el.style.border = `3px solid ${color}`;
     if (type === 'circle') el.style.borderRadius = '50%';
-    el.addEventListener('mousedown', (e) => {
-        setActiveObject(id);
-        if (e.target === handle) startDrag(e, el, 'resize');
-        else startDrag(e, el, 'move');
-    });
+    el.addEventListener('mousedown', (e) => { setActiveObject(id); if (e.target === handle) startDrag(e, el, 'resize'); else startDrag(e, el, 'move'); });
     return el;
 }
 
@@ -266,8 +328,7 @@ function setActiveObject(id) {
 function updateActiveObject(updates = {}) {
     const el = document.querySelector(`[data-id="${activeObjectId}"]`);
     if (!el) return;
-    const x = parseFloat(el.style.left);
-    const y = parseFloat(el.style.top);
+    const x = parseFloat(el.style.left); const y = parseFloat(el.style.top);
     if (el.classList.contains('preview-fixed-comment')) {
         socket.emit('update_fixed_comment', { id: activeObjectId, x, y });
     } else {
@@ -305,6 +366,10 @@ function setupSocket(port) {
     currentUrl = `http://${ip}:${port}`; serverUrlHeader.textContent = currentUrl; portInput.value = port;
     QRCode.toDataURL(currentUrl, { errorCorrectionLevel: 'H' }, (err, url) => { currentQrDataUrl = url; });
     socket = io(`http://localhost:${port}`);
+    
+    // Start capture with a delay
+    setTimeout(() => startCapture(), 1000);
+
     socket.on('new_comment', (data) => {
         const div = document.createElement('div'); div.className = 'history-item';
         const time = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -327,3 +392,6 @@ ngBtn.addEventListener('click', () => {
         setTimeout(() => { ngStatus.textContent = ''; }, 2000);
     }
 });
+
+// Initial startup
+setTimeout(() => startCapture(), 1000);
