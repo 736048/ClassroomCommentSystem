@@ -1,9 +1,11 @@
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 const { startServer } = require('./server/app');
 
 let overlayWindow;
 let controlWindow;
+let serverInstance;
+let currentPort = 3000;
 
 function createWindows() {
     const primaryDisplay = screen.getPrimaryDisplay();
@@ -26,13 +28,8 @@ function createWindows() {
         }
     });
 
-    // Make it click-through
     overlayWindow.setIgnoreMouseEvents(true);
-
-    // macOS specific: Ensure it stays on top of other full-screen apps if possible
     overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    
-    // Load the overlay HTML
     overlayWindow.loadFile(path.join(__dirname, 'renderer/overlay.html'));
 
     // 2. Control Panel Window
@@ -46,6 +43,16 @@ function createWindows() {
     });
 
     controlWindow.loadFile(path.join(__dirname, 'renderer/control.html'));
+    
+    // Initial port send (after load)
+    controlWindow.webContents.on('did-finish-load', () => {
+        controlWindow.webContents.send('port-updated', currentPort);
+    });
+    
+    // Also send to overlay
+    overlayWindow.webContents.on('did-finish-load', () => {
+        overlayWindow.webContents.send('port-updated', currentPort);
+    });
 
     controlWindow.on('closed', () => {
         app.quit();
@@ -67,9 +74,61 @@ function setupScreenListeners() {
     screen.on('display-removed', updateOverlayBounds);
 }
 
+// IPC Handlers
+ipcMain.on('change-port', (event, newPort) => {
+    if (serverInstance) {
+        console.log(`Closing server on port ${currentPort}...`);
+        
+        const closeServer = () => {
+            if (serverInstance.server) {
+                if (serverInstance.server.closeAllConnections) {
+                    serverInstance.server.closeAllConnections();
+                }
+                serverInstance.server.close(() => {
+                    console.log('Server closed.');
+                    startNewServer(newPort);
+                });
+            } else {
+                startNewServer(newPort);
+            }
+        };
+
+        if (serverInstance.io) {
+            // Notify clients to disconnect/reload
+            serverInstance.io.emit('force_disconnect');
+            
+            // Give a tiny delay for the message to send? No, io.close might be fast. 
+            // io.emit is async in nature but we can try just sending it.
+            
+            serverInstance.io.close(() => {
+                closeServer();
+            });
+        } else {
+            closeServer();
+        }
+    } else {
+        startNewServer(newPort);
+    }
+});
+
+function startNewServer(port) {
+    try {
+        currentPort = port;
+        serverInstance = startServer(port);
+        console.log(`Server started on port ${port}`);
+        
+        // Notify windows
+        if (controlWindow) controlWindow.webContents.send('port-updated', port);
+        if (overlayWindow) overlayWindow.webContents.send('port-updated', port);
+        
+    } catch (e) {
+        console.error('Failed to start server:', e);
+    }
+}
+
 app.whenReady().then(() => {
-    // Start Express/Socket.io Server
-    startServer(3000);
+    // Start initial server
+    startNewServer(currentPort);
     
     createWindows();
     setupScreenListeners();

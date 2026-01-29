@@ -25,17 +25,25 @@ socket.on('new_comment', (data) => {
     addCommentToHistory(data);
 });
 
+// Force disconnect handling
+socket.on('force_disconnect', () => {
+    socket.disconnect(); // Manually disconnect
+    alert('サーバー設定が変更されました。新しいQRコードを読み取ってください。');
+    statusDiv.textContent = '接続が切れました。再読み込みしてください。';
+    statusDiv.style.color = 'red';
+    input.disabled = true;
+    btn.disabled = true;
+});
+
 function addCommentToHistory(data) {
     if (!data || !data.text) return;
 
     const item = document.createElement('div');
     item.className = 'history-item';
     
-    // We don't show color indicator anymore since everyone is white (or teacher is special but we can ignore for now or show distinctively if needed)
-    
     const textSpan = document.createElement('span');
     textSpan.textContent = data.text;
-    // History text always black for readability on white background
+    // History text always black
     textSpan.style.color = '#000'; 
 
     item.appendChild(textSpan);

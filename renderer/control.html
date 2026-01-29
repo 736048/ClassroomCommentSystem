@@ -6,209 +6,326 @@
     <style>
         :root {
             --border-color: #000;
+            --bg-color: #f0f0f0;
+            --panel-bg: #fff;
+            
+            /* Responsive Base Font Size: Min 14px, Max 18px, scaling with width */
+            --base-font-size: clamp(14px, 1.5vw, 18px);
+            --header-font-size: clamp(1.2rem, 2vw, 1.5rem);
+            --btn-padding: clamp(5px, 0.5vw, 10px);
         }
         * { box-sizing: border-box; }
+        
         body {
             font-family: "Helvetica Neue", Arial, sans-serif;
-            background-color: #f0f0f0;
+            background-color: var(--bg-color);
             color: #000;
             margin: 0;
-            padding: 20px;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            font-size: var(--base-font-size); /* Global Auto-Scaling */
         }
-        .main-wrapper {
-            background: #fff;
-            width: 100%;
-            max-width: 800px;
-            border: 3px solid var(--border-color);
-            box-shadow: 8px 8px 0px rgba(0,0,0,1);
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-            gap: 20px;
+
+        /* --- Layout --- */
+        .app-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr;
+            height: 100%;
         }
-        h1 {
-            margin: 0;
-            padding-bottom: 15px;
-            font-size: 1.8rem;
-            font-weight: 900;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            border-bottom: 3px solid var(--border-color);
-            text-align: center;
+
+        header {
             background: #000;
             color: #fff;
-            padding: 15px;
-            margin-bottom: 10px;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            height: clamp(50px, 8vh, 60px);
         }
+        header h1 {
+            margin: 0;
+            font-size: var(--header-font-size);
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+
+        .main-content {
+            display: grid;
+            gap: clamp(10px, 2vw, 20px);
+            padding: clamp(10px, 2vw, 20px);
+            overflow-y: auto;
+        }
+
+        /* Desktop Layout */
+        @media (min-width: 900px) {
+            .main-content {
+                grid-template-columns: 1.5fr 1fr; /* Preview : Controls */
+                grid-template-rows: 1fr;
+                overflow: hidden;
+            }
+            .column-left, .column-right {
+                overflow-y: auto;
+                padding-right: 5px;
+                display: flex;
+                flex-direction: column;
+            }
+        }
+
+        /* --- Components --- */
         .section {
+            background: var(--panel-bg);
             border: 3px solid var(--border-color);
-            padding: 20px;
-            background: #fff;
+            padding: clamp(10px, 1.5vw, 20px);
+            margin-bottom: clamp(10px, 1.5vw, 20px);
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.1);
         }
         h2 {
-            margin: 0 0 15px 0;
-            font-size: 1.2rem;
+            margin: 0 0 10px 0;
+            font-size: 1.1em;
             text-transform: uppercase;
             border-bottom: 2px solid #000;
-            padding-bottom: 5px;
+            padding-bottom: 3px;
             display: inline-block;
             font-weight: 900;
         }
-        .info {
-            background: #eee;
-            border: 2px solid #000;
-            padding: 10px;
-            font-family: monospace;
-            font-weight: bold;
-            font-size: 1.1rem;
-            text-align: center;
-        }
-        input[type="text"] {
+
+        input[type="text"], input[type="number"] {
             width: 100%;
-            padding: 10px 15px;
-            margin-bottom: 15px;
-            border: 3px solid var(--border-color);
-            font-size: 16px;
-            font-weight: bold;
+            padding: var(--btn-padding);
+            border: 2px solid #000;
+            font-size: 1em;
             border-radius: 0;
             outline: none;
         }
-        input[type="text"]:focus {
-            background: #fdfdfd;
-            box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
-        }
+        
         button {
             background: #000;
             color: #fff;
-            border: 3px solid #000;
-            padding: 10px 20px;
-            font-size: 16px;
-            font-weight: 900;
+            border: 2px solid #000;
+            padding: var(--btn-padding) clamp(10px, 1vw, 20px);
+            font-size: 0.9em;
+            font-weight: bold;
             cursor: pointer;
-            border-radius: 0;
-            text-transform: uppercase;
             transition: all 0.1s;
         }
         button:hover { background: #333; }
-        button:active { transform: translate(2px, 2px); box-shadow: none; }
-        button.secondary {
-            background: #fff;
-            color: #000;
-        }
+        button:active { transform: translateY(2px); }
+        button.secondary { background: #fff; color: #000; }
         button.secondary:hover { background: #eee; }
-        
-        .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        
-        /* Color Selector */
-        .color-selector {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
+
+        .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+
+        /* --- Preview Area (Auto Aspect Ratio) --- */
+        #screen-preview-container {
+            position: relative; 
+            width: 100%; 
+            border: 3px solid #000; 
+            background: #000;
+            /* Aspect ratio is dynamically set by JS, defaults to 16/9 */
+            aspect-ratio: 16 / 9;
+            margin-bottom: 10px;
+        }
+        #screen-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Fit whole screen */
+            display: block;
+        }
+        #preview-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden;
+        }
+        .preview-shape {
+            position: absolute; cursor: move; box-sizing: border-box;
+        }
+        .resize-handle {
+            position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px;
+            background: #fff; border: 2px solid #000; cursor: se-resize; display: none;
+        }
+        .preview-shape.active { z-index: 10; }
+        .preview-shape.active .resize-handle { display: block; }
+
+        /* Palette Controls */
+        .palette-controls {
+            display: flex; gap: 10px; align-items: center; background: #eee; 
+            padding: 10px; border: 2px solid #000;
             flex-wrap: wrap;
         }
-        .color-block {
-            width: 35px;
-            height: 35px;
-            cursor: pointer;
-            border: 2px solid #eee; /* Light border when not selected for white */
-            transition: transform 0.1s;
-            position: relative;
+        .shape-btn {
+            width: clamp(35px, 4vw, 50px); 
+            height: clamp(35px, 4vw, 50px);
+            border: 2px solid #000; background: #fff; 
+            display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 1.2em;
         }
-        .color-block:hover {
-            transform: scale(1.1);
-            z-index: 1;
+        .shape-color {
+            width: clamp(25px, 3vw, 35px); 
+            height: clamp(25px, 3vw, 35px);
+            border: 1px solid #999; cursor: pointer;
         }
-        .color-block.selected {
-            border: 3px solid #000;
-            box-shadow: 3px 3px 0px rgba(0,0,0,0.5);
-            transform: translateY(-2px);
-            z-index: 2;
+        .shape-color.selected { border: 2px solid #000; transform: scale(1.1); box-shadow: 2px 2px 0 rgba(0,0,0,0.2); }
+
+        /* --- Inputs --- */
+        .input-wrapper { display: flex; gap: 5px; margin-bottom: 10px; }
+        #teacher-input { flex-grow: 1; height: clamp(35px, 4vh, 45px); }
+        #teacher-send { height: clamp(35px, 4vh, 45px); }
+
+        #detail-toggle-btn {
+            width: 100%; text-align: center; font-size: 0.9em; padding: 8px; 
+            background: #e0e0e0; border: none; cursor: pointer; margin-bottom: 10px;
         }
+
+        #detail-settings {
+            display: none; padding: 15px; background: #f9f9f9; border: 1px solid #ddd; margin-bottom: 15px;
+        }
+        #detail-settings.show { display: block; }
+
+        .option-group { display: flex; gap: 0; border: 1px solid #000; margin-right: 15px; }
+        .option-btn {
+            padding: 5px 15px; background: #fff; cursor: pointer; font-size: 0.9em; border-right: 1px solid #000;
+            white-space: nowrap;
+        }
+        .option-btn:last-child { border-right: none; }
+        .option-btn.selected { background: #000; color: #fff; }
+
+        .text-color { 
+            width: clamp(30px, 3vw, 40px); 
+            height: clamp(30px, 3vw, 40px);
+            border: 1px solid #ccc; cursor: pointer; 
+        }
+        .text-color.selected { border: 3px solid #000; transform: translateY(-2px); }
 
         /* History */
         #comment-history {
-            height: 300px; /* Changed from max-height to height for resizing logic */
+            flex-grow: 1;
+            min-height: 150px;
             overflow-y: auto;
-            border: 3px solid #000;
-            padding: 10px;
-            background: #f9f9f9;
-            resize: vertical; /* Allow vertical resize */
+            border: 2px solid #000;
+            padding: 5px;
+            background: #fff;
         }
         .history-item {
-            border-bottom: 1px solid #ccc;
-            padding: 5px 0;
-            font-size: 0.9rem;
-            font-weight: bold;
+            border-bottom: 1px solid #eee; padding: 8px 5px; font-size: 0.9em;
         }
-        
-        /* Checkbox styling mimic */
-        input[type="checkbox"] {
-            transform: scale(1.5);
-            margin-right: 5px;
-        }
-        
-        label { font-weight: bold; }
 
     </style>
 </head>
 <body>
-    <div class="main-wrapper">
-        <h1>管理画面</h1>
-        
-        <div class="section">
-            <h2>サーバーURL</h2>
-            <div id="server-url" class="info">読み込み中...</div>
-            <div style="text-align: center; margin-top: 15px;">
-                <img id="qr-code" alt="QR Code" style="display: none; border: 3px solid #000; padding: 5px;">
+    <div class="app-container">
+        <header>
+            <h1>CCS CONTROL</h1>
+            <div style="font-size: 0.8em;">
+                URL: <span id="server-url-header">Loading...</span>
             </div>
-        </div>
+        </header>
 
-        <div class="section">
-            <h2>先生コメント</h2>
-            <input type="text" id="teacher-input" placeholder="メッセージを入力...">
-            
-            <div class="color-selector">
-                <div class="color-block selected" data-color="#ffffff" style="background-color: #ffffff;"></div>
-                <div class="color-block" data-color="#ff6b6b" style="background-color: #ff6b6b;"></div>
-                <div class="color-block" data-color="#4dabf7" style="background-color: #4dabf7;"></div>
-                <div class="color-block" data-color="#51cf66" style="background-color: #51cf66;"></div>
-                <div class="color-block" data-color="#000000" style="background-color: #000000;"></div>
+        <div class="main-content">
+            <!-- Left Column: Preview & Server Settings -->
+            <div class="column-left">
+                <div class="section" style="flex-grow: 0;">
+                    <h2>画面プレビュー & 図形編集</h2>
+                    <!-- Aspect ratio set via JS -->
+                    <div id="screen-preview-container">
+                        <video id="screen-preview" autoplay></video>
+                        <div id="preview-overlay"></div>
+                    </div>
+                    
+                    <div class="palette-controls">
+                        <div id="add-circle" class="shape-btn" title="丸">●</div>
+                        <div id="add-square" class="shape-btn" title="四角">■</div>
+                        <div style="width: 1px; height: 30px; background: #ccc; margin: 0 10px;"></div>
+                        
+                        <!-- Shape Colors (Matching Text Colors) -->
+                        <div class="shape-color selected" data-color="#ff0000" style="background: red;"></div>
+                        <div class="shape-color" data-color="#0000ff" style="background: blue;"></div>
+                        <div class="shape-color" data-color="#00ff00" style="background: green;"></div>
+                        <div class="shape-color" data-color="#ffff00" style="background: yellow;"></div>
+                        <div class="shape-color" data-color="#ffffff" style="background: white;"></div>
+                        <div class="shape-color" data-color="#000000" style="background: black;"></div>
+                        
+                        <div style="flex-grow: 1;"></div>
+                        <button id="clear-shapes" style="background: #d63384; border: none; font-size: 0.8em;">全消去</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>接続設定</h2>
+                    <div class="flex-row">
+                        <label>ポート:</label>
+                        <input type="number" id="port-input" value="3000" style="width: 80px;">
+                        <button id="change-port-btn" class="secondary">変更</button>
+                    </div>
+                    <div style="text-align: center;">
+                        <img id="qr-code" alt="QR" style="display: none; border: 2px solid #000; width: 100px;">
+                    </div>
+                </div>
             </div>
 
-            <div class="flex-row">
-                <label style="display: flex; align-items: center;">
-                    <input type="checkbox" id="teacher-fixed"> 固定
-                </label>
-                <button id="teacher-send">送信</button>
-            </div>
-            
-            <div id="fixed-pos-container" style="display: none; margin-top: 15px; border-top: 2px solid #000; padding-top: 10px;">
-                <label style="margin-bottom: 5px;">固定位置 (上から): <span id="pos-val">10%</span></label>
-                <input type="range" id="fixed-pos" min="5" max="90" value="10" style="width: 100%; cursor: pointer;">
-            </div>
+            <!-- Right Column: Input & History -->
+            <div class="column-right">
+                <div class="section">
+                    <h2>コメント送信</h2>
+                    <div class="input-wrapper">
+                        <input type="text" id="teacher-input" placeholder="メッセージ..." maxlength="20">
+                        <button id="teacher-send">送信</button>
+                    </div>
+                    
+                    <button id="detail-toggle-btn">▼ 詳細設定を表示</button>
+                    
+                    <div id="detail-settings">
+                        <div class="flex-row">
+                            <label style="width: 60px;">フォント</label>
+                            <div class="option-group">
+                                <div id="btn-font-sans" class="option-btn selected">ゴシック</div>
+                                <div id="btn-font-serif" class="option-btn">明朝</div>
+                            </div>
+                        </div>
+                        <div class="flex-row">
+                            <label style="width: 60px;">サイズ</label>
+                            <div class="option-group">
+                                <div id="btn-size-normal" class="option-btn selected">標準</div>
+                                <div id="btn-size-large" class="option-btn">大</div>
+                            </div>
+                        </div>
+                        <div class="flex-row" style="align-items: center; margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd;">
+                            <label style="width: 60px;">色</label>
+                            <div class="color-row" style="display: flex; gap: 10px; flex-wrap: nowrap;">
+                                <div class="text-color selected" data-color="#ffffff" style="background: #ffffff;"></div>
+                                <div class="text-color" data-color="#ff6b6b" style="background: #ff6b6b;"></div>
+                                <div class="text-color" data-color="#4dabf7" style="background: #4dabf7;"></div>
+                                <div class="text-color" data-color="#51cf66" style="background: #51cf66;"></div>
+                                <div class="text-color" data-color="#000000" style="background: #000000;"></div>
+                            </div>
+                        </div>
+                        <div class="flex-row" style="margin-top: 10px;">
+                            <label><input type="checkbox" id="teacher-fixed"> 固定表示</label>
+                            <button id="clear-fixed" class="secondary" style="margin-left: auto; font-size: 0.8em;">固定解除</button>
+                        </div>
+                        <div id="fixed-pos-container" style="display: none; margin-top: 5px;">
+                            <label style="font-size: 0.9em;">位置: <span id="pos-val">10%</span></label>
+                            <input type="range" id="fixed-pos" min="5" max="90" value="10" style="width: 100%;">
+                        </div>
+                    </div>
+                </div>
 
-            <button id="clear-fixed" class="secondary" style="margin-top: 10px; width: 100%;">固定解除</button>
-        </div>
-
-        <div class="section">
-            <h2>NGワード設定</h2>
-            <input type="text" id="ng-words" placeholder="例: 禁止, ダメ (カンマ区切り)">
-            <button id="update-ng" class="secondary">更新</button>
-            <p id="ng-status" style="font-weight: bold; margin-top: 5px; height: 1.2em;"></p>
-        </div>
-
-        <div class="section">
-            <h2>履歴</h2>
-            <div id="comment-history">
-                <!-- History items -->
+                <div class="section" style="display: flex; flex-direction: column; flex-grow: 1;">
+                    <h2>履歴</h2>
+                    <div id="comment-history"></div>
+                </div>
+                
+                <div class="section">
+                    <h2>NGワード</h2>
+                    <div class="flex-row">
+                        <input type="text" id="ng-words" placeholder="追加..." style="font-size: 0.9em;">
+                        <button id="update-ng" class="secondary">更新</button>
+                    </div>
+                    <span id="ng-status" style="font-size: 0.8em; color: green;"></span>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="http://localhost:3000/socket.io/socket.io.js"></script>
     <script src="control.js"></script>
 </body>
 </html>
