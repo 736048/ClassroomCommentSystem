@@ -1,31 +1,6 @@
 const socket = io('http://localhost:3000');
 const container = document.getElementById('comment-container');
 
-// レーン管理（簡易版）
-const FONT_SIZE = 48; // CSSと合わせる
-const LANE_HEIGHT = FONT_SIZE * 1.5;
-let lanes = []; // 各レーンの「最後にコメントが通過する時刻」を保持
-
-function initLanes() {
-    const usableHeight = window.innerHeight * 0.8; // 上下10%を空ける
-    const maxLanes = Math.floor(usableHeight / LANE_HEIGHT);
-    lanes = new Array(maxLanes).fill(0);
-}
-
-window.addEventListener('resize', initLanes);
-initLanes();
-
-function getAvailableLane(now) {
-    // 空いているレーンを探す
-    for (let i = 0; i < lanes.length; i++) {
-        if (lanes[i] < now) {
-            return i;
-        }
-    }
-    // 空いてなければランダム（あるいは一番早く空くところ）
-    return Math.floor(Math.random() * lanes.length);
-}
-
 socket.on('new_comment', (data) => {
     const div = document.createElement('div');
     div.className = 'comment';
@@ -34,71 +9,80 @@ socket.on('new_comment', (data) => {
     // Color handling
     if (data.color) {
         div.style.color = data.color;
-        // Check if color is black or very dark to apply white stroke
+        // Check if color is strictly black to apply white stroke
         const c = data.color.toLowerCase();
-        if (c === '#000000' || c === '#000' || c === 'black' || c === '#343a40') {
+        if (c === '#000000' || c === '#000' || c === 'black') {
             div.classList.add('dark-text');
         }
     }
     
-    // 一時的に配置して幅を取得
-    div.style.visibility = 'hidden';
+    // 一時的に配置して幅・高さを取得（画面外には出さないがvisibilityで隠す）
+    div.style.opacity = '0';
     container.appendChild(div);
-    const width = div.offsetWidth;
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    
-    // レーン決定
-    const now = Date.now();
-    const laneIndex = getAvailableLane(now);
     
     // 固定コメントの場合
     if (data.isFixed) {
-        // 既存の固定コメントがあれば削除（あるいは上書き）
+        // 既存の固定コメントがあれば削除
         const existingFixed = document.getElementById('fixed-comment');
         if (existingFixed) existingFixed.remove();
 
         div.id = 'fixed-comment';
         div.style.position = 'fixed';
-        div.style.top = '10%'; // 上部10%の位置
+        // Use provided position or default to 10%
+        div.style.top = (data.position ? data.position : 10) + '%'; 
         div.style.left = '50%';
         div.style.transform = 'translateX(-50%)';
         div.style.zIndex = '1000'; // 最前面
-        div.style.backgroundColor = 'rgba(0,0,0,0.5)'; // 背景色をつけて読みやすく
+        div.style.backgroundColor = 'rgba(0,0,0,0.5)'; // 背景色
         div.style.padding = '10px 20px';
         div.style.borderRadius = '10px';
-        div.style.visibility = 'visible';
-        // アニメーションなし
+        div.style.opacity = '1'; // 固定は即表示
+        
+        // 固定コメント出現アニメーション（少しだけふわっと）
+        div.animate([
+            { opacity: 0, transform: 'translateX(-50%) scale(0.9)' },
+            { opacity: 1, transform: 'translateX(-50%) scale(1)' }
+        ], {
+            duration: 500,
+            easing: 'ease-out'
+        });
         return;
     }
     
-    // 配置 (上下10%の余白を考慮)
-    const topOffset = windowHeight * 0.1;
-    div.style.top = `${topOffset + (laneIndex * LANE_HEIGHT)}px`;
-    div.style.left = `${windowWidth}px`; // 右端スタート
-    div.style.visibility = 'visible';
+    // --- 蛍方式（Firefly Style） ---
+    const width = div.offsetWidth;
+    const height = div.offsetHeight;
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
 
-    // アニメーション設定
-    const duration = 5000; // 5秒で横断
+    // ランダム位置計算 (画面端マージン 50px)
+    // テキストが画面からはみ出さないように計算
+    const maxX = windowWidth - width - 50;
+    const maxY = windowHeight - height - 50;
     
-    // 次にこのレーンが使えるようになる時間を計算
-    // (画面幅 / (画面幅 + コメント幅)) * duration 分だけ待てば、次のコメントが追い越さない
-    // 簡易的に「半分くらい進んだら次OK」とするか、厳密にやるか。
-    // ここでは「直前のコメントの右端が画面右端から出現しきったらOK」とする。
-    // 速度 v = (windowWidth + width) / duration
-    // コメントが完全に出現するまでの距離 = width
-    // 必要時間 t = width / v
-    const speed = (windowWidth + width) / duration;
-    const appearTime = width / speed;
-    lanes[laneIndex] = now + appearTime + 200; // マージン200ms
+    // 最小値チェック（画面が狭すぎる場合など）
+    const x = Math.max(50, Math.random() * maxX);
+    const y = Math.max(50, Math.random() * maxY);
 
-    // Web Animations API
+    div.style.left = `${x}px`;
+    div.style.top = `${y}px`;
+    
+    // 重なり順を制御（新しいものを手前に、でもランダム要素も少し入れる？）
+    // 基本はDOM順序で手前に来るのでそのままでOK
+    
+    // アニメーション設定
+    // ふわっと現れて(fadeIn)、しばらく留まり(Stay)、ふわっと消える(fadeOut)
+    const duration = 4000 + Math.random() * 3000; // 4〜7秒の間でランダム
+    
     const animation = div.animate([
-        { transform: 'translateX(0)' },
-        { transform: `translateX(-${windowWidth + width}px)` }
+        { opacity: 0, transform: 'scale(0.8)', offset: 0 },
+        { opacity: 1, transform: 'scale(1)', offset: 0.1 },   // 10%時点で完全表示
+        { opacity: 1, transform: 'scale(1)', offset: 0.8 },   // 80%時点まで維持
+        { opacity: 0, transform: 'scale(1.1)', offset: 1 }    // 最後は消える
     ], {
         duration: duration,
-        easing: 'linear'
+        easing: 'ease-in-out',
+        fill: 'forwards'
     });
 
     animation.onfinish = () => {
@@ -109,4 +93,12 @@ socket.on('new_comment', (data) => {
 socket.on('clear_fixed_comment', () => {
     const existingFixed = document.getElementById('fixed-comment');
     if (existingFixed) existingFixed.remove();
+});
+
+// Update position of existing fixed comment
+socket.on('update_fixed_position', (pos) => {
+    const existingFixed = document.getElementById('fixed-comment');
+    if (existingFixed) {
+        existingFixed.style.top = pos + '%';
+    }
 });

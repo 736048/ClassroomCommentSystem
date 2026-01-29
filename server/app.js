@@ -41,6 +41,11 @@ function startServer(port = 3000) {
         socket.on('clear_fixed_comment', () => {
             io.emit('clear_fixed_comment');
         });
+
+        // 固定コメント位置更新
+        socket.on('update_fixed_position', (position) => {
+            io.emit('update_fixed_position', position);
+        });
     });
 
     server.listen(port, '0.0.0.0', () => {
