@@ -1,0 +1,19 @@
+{
+  "name": "25comment",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "electron": "^40.1.0",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  }
+}
