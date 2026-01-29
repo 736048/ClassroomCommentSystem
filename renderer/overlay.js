@@ -30,7 +30,16 @@ socket.on('new_comment', (data) => {
     const div = document.createElement('div');
     div.className = 'comment';
     div.textContent = data.text;
-    if (data.color) div.style.color = data.color;
+    
+    // Color handling
+    if (data.color) {
+        div.style.color = data.color;
+        // Check if color is black or very dark to apply white stroke
+        const c = data.color.toLowerCase();
+        if (c === '#000000' || c === '#000' || c === 'black' || c === '#343a40') {
+            div.classList.add('dark-text');
+        }
+    }
     
     // 一時的に配置して幅を取得
     div.style.visibility = 'hidden';

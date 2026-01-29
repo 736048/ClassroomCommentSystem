@@ -3,17 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>コメント送信</title>
+    <title>Comment</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>コメントを送る</h1>
-        <div class="input-group">
-            <input type="text" id="comment-input" placeholder="ここにメッセージを入力..." maxlength="50">
+    <div class="main-wrapper">
+        <header>
+            <h1>コメント</h1>
+        </header>
+
+        <div class="input-area">
+            <div class="text-input-wrapper">
+                <input type="text" id="comment-input" placeholder="メッセージ..." maxlength="50">
+                <button id="send-btn">送信</button>
+            </div>
+            <div id="status"></div>
         </div>
-        <button id="send-btn">送信</button>
-        <div id="status"></div>
+
+        <div class="history-area">
+            <h2>履歴</h2>
+            <div id="history-list">
+                <!-- Comments will appear here -->
+            </div>
+        </div>
     </div>
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>

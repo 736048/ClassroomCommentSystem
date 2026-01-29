@@ -18,12 +18,12 @@ body {
     top: 0;
     left: 0;
     white-space: nowrap;
-    color: white;
-    font-size: 48px; /* 大きめ */
+    color: white; /* Default white */
+    font-size: 48px;
     line-height: 1.2;
     will-change: transform;
     
-    /* 黒縁取り（CSS Text Strokeがない環境も考慮してtext-shadowで代用・強化） */
+    /* Default: Black stroke for light text */
     text-shadow: 
         3px  3px 0 #000,
        -3px  3px 0 #000,
@@ -33,4 +33,18 @@ body {
        -3px  0px 0 #000,
         0px  3px 0 #000,
         0px -3px 0 #000;
+}
+
+/* Modifier for dark text (White stroke) */
+.comment.dark-text {
+    /* Stroke becomes white */
+    text-shadow: 
+        3px  3px 0 #fff,
+       -3px  3px 0 #fff,
+        3px -3px 0 #fff,
+       -3px -3px 0 #fff,
+        3px  0px 0 #fff,
+       -3px  0px 0 #fff,
+        0px  3px 0 #fff,
+        0px -3px 0 #fff;
 }
